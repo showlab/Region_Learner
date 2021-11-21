@@ -1,0 +1,85 @@
+{
+    "name": "full-WebVid2M-1f-pti2k",
+    "n_gpu": 8,
+    "arch": {
+        "type": "FrozenInTime",
+        "args": {
+            "video_params": {
+                "model": "SpaceTimeTransformer",
+                "arch_config": "base_patch16_224",
+                "num_frames": 4,
+                "pretrained": true,
+                "time_init": "zeros",
+                "random_sampling": false,
+                "clustering": false,
+                "num_tokens":2048,
+                "att":false,
+                "not_plus":false
+            },
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "pretrained": true,
+                "input": "text"
+            },
+            "projection": "minimal",
+            "load_checkpoint" : ""
+        }
+    },
+    "data_loader":
+            [
+                {
+                    "type": "MultiDistTextVideoDataLoader",
+                    "args":{
+                        "dataset_name": "WebVid",
+                        "data_dir": "/cfs/cfs-4260a4096/mds6/WebVid/",
+                        "reader": "av_fast",
+                        "shuffle": true,
+                        "num_workers": 16,
+                        "batch_size": 64,
+                        "split": "train",
+                        "cut": "2M",
+                        "subsample": 1,
+                        "text_params": {
+                            "input": "text"
+                        },
+                        "video_params": {
+                            "input_res": 224,
+                            "num_frames": 1,
+                            "loading": "lax"
+                        }
+                    }
+                }
+            ],
+    "optimizer": {
+        "type": "AdamW",
+        "args":{
+            "lr": 2e-4
+        }
+    },
+    "loss": {
+        "type": "NormSoftmaxLoss",
+        "args": {
+        }
+    },
+    "metrics": [
+        "t2v_metrics",
+        "v2t_metrics"
+     ],
+    "trainer": {
+        "epochs": 100,
+        "max_samples_per_epoch": 1000000,
+        "save_dir": "./results/full-webvid2m-frozen-in-time",
+        "save_period": 2,
+        "verbosity": 2,
+        "monitor": "min val_loss_0",
+        "early_stop": 10,
+        "init_val": true,
+        "neptune": false,
+        "use_amp":false,
+        "debug":false
+    },
+    "visualizer": {
+        "type": ""
+    }
+
+}

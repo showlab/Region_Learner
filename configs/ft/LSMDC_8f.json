@@ -1,0 +1,94 @@
+{
+    "name": "LSMDC-4f",
+    "n_gpu": 4,
+    "arch": {
+        "type": "FrozenInTime",
+        "args": {
+            "video_params": {
+                "model": "SpaceTimeTransformer",
+                "arch_config": "base_patch16_224",
+                "num_frames": 8,
+                "pretrained": true,
+                "time_init": "zeros",
+                "random_sampling": false,
+                "CLU": false,
+                "CLU_num_tokens":2048,
+                "CLU_att":false,
+                "CLU_not_plus":false,
+                "CLU_selecting":false,
+                "CLU_selecting_start":-1,
+                "CLU_learn_region":false,
+                "CLU_learn_region_num":8,
+                "CLU_region_att":"none",
+                "CLU_region_att_deepth":1,
+                "CLU_build_tube":false,
+                "CLU_VTAlign":false,
+                "temporal_type":"att"
+            },
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "pretrained": true,
+                "input": "text"
+            },
+            "projection": "minimal",
+            "load_checkpoint": ""
+        }
+    },
+    "data_loader": [{
+        "type": "MultiDistTextVideoDataLoader",
+        "args":{
+            "dataset_name": "LSMDC",
+            "data_dir": "/cfs/cfs-4260a4096/260a4096/mds10/LSMDC",
+            "reader":"decord",
+            "shuffle": false,
+            "num_workers": 16,
+            "batch_size": 16,
+            "split": "train",
+            "cut": "jsfusion",
+            "subsample": 1,
+            "text_params": {
+                "input": "text"
+            },
+            "video_params": {
+                "extraction_fps": 25,
+                "extraction_res": 256,
+                "input_res": 224,
+                "num_frames": 8,
+                "loading": "lax",
+                "stride": 1
+            }
+        }
+    }],
+    "optimizer": {
+        "type": "AdamW",
+        "args":{
+            "lr": 3e-5
+        }
+    },
+    "loss": {
+        "type": "NormSoftmaxLoss",
+        "args": {
+        }
+    },
+    "metrics": [
+        "t2v_metrics",
+        "v2t_metrics"
+     ],
+    "trainer": {
+        "epochs": 100,
+        "max_samples_per_epoch": 9000,
+        "save_dir": "exps",
+        "save_period": 5,
+        "verbosity": 2,
+        "monitor": "min val_loss_0",
+        "early_stop": 10,
+        "neptune": false,
+        "use_amp":false
+    },
+    "visualizer": {
+        "type": "",
+        "args": {
+        }
+    }
+
+}

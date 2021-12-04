@@ -39,7 +39,7 @@
             "type": "MultiDistTextVideoDataLoader",
             "args":{
                 "dataset_name": "MSRVTT",
-                "data_dir": "/cfs/cfs-4260a4096/260a4096/417-mds5/awinywang417/Data/MSRVTT/MSRVTT/",
+                "data_dir": "your_path_to_dataset/MSRVTT/",
                 "reader":"decord",
                 "shuffle": true,
                 "num_workers": 16,

@@ -17,7 +17,7 @@ class DiDeMo(TextVideoDataset):
             metadata = metadata.sample(frac=self.subsample)
         self.metadata = metadata
         print("load split {}, {} samples".format(self.split, len(metadata)))
-        # /cfs/cfs-4260a4096/260a4096/public_datasets/MSVD/YouTubeClips
+        # your_path_to_dataset/MSVD/YouTubeClips
 
     def _get_video_path(self, sample):
         rel_video_fp = sample[1]

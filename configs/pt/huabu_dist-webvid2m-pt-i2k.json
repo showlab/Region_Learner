@@ -31,7 +31,7 @@
                     "type": "MultiDistTextVideoDataLoader",
                     "args":{
                         "dataset_name": "WebVid",
-                        "data_dir": "/cfs/cfs-4260a4096/mds6/WebVid/",
+                        "data_dir": "your_path_to_dataset/WebVid/",
                         "reader": "av_fast",
                         "shuffle": true,
                         "num_workers": 16,

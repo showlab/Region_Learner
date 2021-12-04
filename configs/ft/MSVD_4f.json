@@ -39,7 +39,7 @@
             "type": "MultiDistTextVideoDataLoader",
             "args": {
                 "dataset_name": "MSVD",
-                "data_dir": "/cfs/cfs-4260a4096/260a4096/public_datasets/MSVD/YouTubeClips",
+                "data_dir": "your_path_to_dataset/MSVD/YouTubeClips",
                 "reader":"decord",
                 "shuffle": false,
                 "num_workers": 16,

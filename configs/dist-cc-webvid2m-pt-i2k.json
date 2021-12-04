@@ -27,7 +27,7 @@
                     "type": "MultiDistTextVideoDataLoader",
                     "args":{
                         "dataset_name": "ConceptualCaptions3M",
-                        "data_dir": "/cfs/cfs-4260a4096/260a4096/public_datasets/CC3M/",
+                        "data_dir": "your_path_to_dataset/CC3M/",
                         "reader": "cv2",
                         "shuffle": true,
                         "num_workers": 16,
@@ -48,7 +48,7 @@
                     "type": "MultiDistTextVideoDataLoader",
                     "args":{
                         "dataset_name": "WebVid",
-                        "data_dir": "/cfs/cfs-4260a4096/260a4096/public_datasets/WebVid/",
+                        "data_dir": "your_path_to_dataset/WebVid/",
                         "reader": "cv2",
                         "shuffle": true,
                         "num_workers": 16,

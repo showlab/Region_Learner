@@ -5,7 +5,7 @@ import os
 
 class LSMDC(TextVideoDataset):
     def _load_metadata(self):
-        # metadata_dir = '/cfs/cfs-4260a4096/260a4096/mds10/LSMDC/meta_data/'
+        # metadata_dir = 'your_path_to_dataset/LSMDC/meta_data/'
         metadata_dir = './meta_data/LSMDC'
 
 
@@ -23,7 +23,7 @@ class LSMDC(TextVideoDataset):
         self.metadata = metadata
         print("load split {}, {} samples".format(self.split, len(metadata)))
         self.miss_vid_cnt = 0
-        # /cfs/cfs-4260a4096/260a4096/public_datasets/MSVD/YouTubeClips
+        # your_path_to_dataset/MSVD/YouTubeClips
 
     def _get_video_path(self, sample):
         video_fp = sample[0]

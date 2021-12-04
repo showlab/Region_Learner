@@ -1,5 +1,8 @@
 # Region_Learner
+The Pytorch implementation for "Video-Text Pre-training with Learned Regions"
+([arxiv](https://arxiv.org/pdf/2112.01194.pdf))
 
+***We are still cleaning up the code further and preparing for pre-training weights.***
 
 ## Preparation
 Overall, this code is built on PyTorch with DistributedDataParallel (DDP).
@@ -18,7 +21,7 @@ Overall, this code is built on PyTorch with DistributedDataParallel (DDP).
 - Run `sh pre-training.sh`
 
 ## Pre-trained Weights
-Coming soon. (It is too big to store here!)
+Coming soon.
 
 ## Acknowledgements 
 This code is based off [Frozen in Time](https://github.com/m-bain/frozen-in-time "Frozen in Time")

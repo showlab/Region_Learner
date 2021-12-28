@@ -6,10 +6,10 @@ The Pytorch implementation for "Video-Text Pre-training with Learned Regions"
 
 ## Preparation
 Overall, this code is built on PyTorch with DistributedDataParallel (DDP).
-- Create conda env and install required packages via `sh install_env.sh`
+- Create conda env and install required packages via `sh setup_myEnv.sh`
 - Create some important folders
 	1. `mkdir data` (you can symlink huge datasets to this folder)
-	2. `meta_data` (put meta data of each dataset here)
+	2. `mkdir meta_data` (put meta data of each dataset here)
 	3. `mkdir results`
 - Download Pre-training data
 	1. Download WebVid-2M (see https://github.com/m-bain/webvid)

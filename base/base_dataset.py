@@ -150,6 +150,8 @@ class TextImageDataset(TextVideoDataset):
                 raise ValueError(f'Image loading failed for {video_fp}, image loading for this dataset is strict.')
             else:
                 print("'Filling empty data for training now!!!'", file=sys.stderr)
+                if not os.path.isfile(video_fp):
+                    print("%s does not exist!!!"%(video_fp))
                 img = Image.new('RGB', (self.video_params['input_res'], self.video_params['input_res']), (0, 0, 0))
 
         # convert to tensor because video transforms don't, expand such that its a 1-frame video.

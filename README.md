@@ -10,15 +10,19 @@ Overall, this code is built on PyTorch with DistributedDataParallel (DDP).
 - Create some important folders
 	1. `mkdir data` (you can symlink huge datasets to this folder)
 	2. `mkdir results`
+- Download WebVid-2M (see https://github.com/m-bain/webvid)
+- Download CC3M (see https://ai.google.com/research/ConceptualCaptions/download)
+
+PS: Not all videos are avaible so that you need to modify the metadata depend on your case. We also provide our metadata in here.
+
+
+## Pre-training 
+- Run `sh pre-training.sh` (Commands with different settings are listed in this script.)
 
 ## Finetuning (on MSR-VTT)
 - Download data (see https://github.com/m-bain/frozen-in-time#-finetuning-benchmarks-msr-vtt)
-- Run `sh finetune.sh`
+- Run `sh fine-tune.sh`.
 
-## Pre-training 
-- Download WebVid-2M (see https://github.com/m-bain/webvid)
-- Download CC-3M (see https://ai.google.com/research/ConceptualCaptions/download)
-- Run `sh pre-training.sh`
 
 ## Pre-trained Weights
 Coming soon.

@@ -19,14 +19,15 @@ class WebVid(TextVideoDataset):
             ...
     """
     def _load_metadata(self):
-        #metadata_dir = os.path.join(self.metadata_dir, 'meta_data')
-        metadata_dir = './meta_data'
+        # metadata_dir = './meta_data/WEBVID/'
+
+        # NOTE: Not all videos can be download. Maybe you need adjust the meta_data for each dataset
         split_files = {            
             'train': 'webvid_training_success_full.tsv',
             'val': 'webvid_validation_success_full.tsv',            # there is no test
         }
         target_split_fp = split_files[self.split]
-        metadata = pd.read_csv(os.path.join(metadata_dir, target_split_fp), sep='\t')
+        metadata = pd.read_csv(os.path.join(self.metadata_dir, target_split_fp), sep='\t')
         if self.subsample < 1:
             metadata = metadata.sample(frac=self.subsample)
 

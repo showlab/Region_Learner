@@ -5,19 +5,19 @@ import os
 
 class DiDeMo(TextVideoDataset):
     def _load_metadata(self):
-        metadata_dir = './meta_data/DIDEMO'
+        # metadata_dir = './meta_data/DIDEMO'
         split_files = {
             'train': 'DiDeMo_train.tsv',
             'val': 'DiDeMo_test.tsv',            # there is no test
             'test': 'DiDeMo_test.tsv'
         }
         target_split_fp = split_files[self.split]
-        metadata = pd.read_csv(os.path.join(metadata_dir, target_split_fp), sep='\t')
+        metadata = pd.read_csv(os.path.join(self.metadata_dir, target_split_fp), sep='\t')
         if self.subsample < 1:
             metadata = metadata.sample(frac=self.subsample)
         self.metadata = metadata
         print("load split {}, {} samples".format(self.split, len(metadata)))
-        # your_path_to_dataset/MSVD/YouTubeClips
+        # data/MSVD/YouTubeClips
 
     def _get_video_path(self, sample):
         rel_video_fp = sample[1]

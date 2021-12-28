@@ -23,11 +23,7 @@ import torch
 from torch import nn, einsum
 from einops import rearrange, repeat
 from timm.models.layers import StdConv2dSame, DropPath, to_2tuple, trunc_normal_
-# added by Mr. Yan
 import math
-# from model.model_helper import get_random_sample_indices
-from model.SoftRegion import SoftRegion
-
 
 
 def attn(q, k, v):
@@ -38,7 +34,12 @@ def attn(q, k, v):
 
 
 class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+    def __init__(self,
+                 in_features,
+                 hidden_features=None,
+                 out_features=None,
+                 act_layer=nn.GELU,
+                 drop=0.):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
@@ -59,8 +60,11 @@ class Mlp(nn.Module):
 class VideoPatchEmbed(nn.Module):
     """ Video to Patch Embedding
     """
-
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768,
+    def __init__(self,
+                 img_size=224,
+                 patch_size=16,
+                 in_chans=3,
+                 embed_dim=768,
                  num_frames=8):
         super().__init__()
         img_size = to_2tuple(img_size)
@@ -72,8 +76,10 @@ class VideoPatchEmbed(nn.Module):
         self.num_patches = num_patches
         self.num_frames = num_frames
         self.embed_dim = embed_dim
-        self.proj = nn.Conv2d(in_chans, embed_dim,
-                              kernel_size=patch_size, stride=patch_size)
+        self.proj = nn.Conv2d(in_chans,
+                              embed_dim,
+                              kernel_size=patch_size,
+                              stride=patch_size)
 
     def forward(self, x):
         B, F, C, H, W = x.shape
@@ -84,13 +90,19 @@ class VideoPatchEmbed(nn.Module):
 
 
 class VarAttention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.,
+    def __init__(self,
+                 dim,
+                 num_heads=8,
+                 qkv_bias=False,
+                 qk_scale=None,
+                 attn_drop=0.,
+                 proj_drop=0.,
                  initialize='random'):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = qk_scale or head_dim**-0.5
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.proj = nn.Linear(dim, dim)
         if initialize == 'zeros':
@@ -107,24 +119,26 @@ class VarAttention(nn.Module):
         h = self.num_heads
         # project x to q, k, v vaalues
         q, k, v = self.qkv(x).chunk(3, dim=-1)
-        q, k, v = map(lambda t: rearrange(
-            t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h),
+                      (q, k, v))
 
         q *= self.scale
 
         # splice out CLS token at index 1
-        (cls_q, q_), (cls_k, k_), (cls_v, v_) = map(
-            lambda t: (t[:, 0:1], t[:, 1:]), (q, k, v))
+        (cls_q, q_), (cls_k, k_), (cls_v,
+                                   v_) = map(lambda t: (t[:, 0:1], t[:, 1:]),
+                                             (q, k, v))
         # let CLS token attend to key / values of all patches across time and space
         cls_out = attn(cls_q, k, v)
         # rearrange across time or space
-        q_, k_, v_ = map(lambda t: rearrange(
-            t, f'{einops_from} -> {einops_to}', **einops_dims), (q_, k_, v_))
+        q_, k_, v_ = map(
+            lambda t: rearrange(t, f'{einops_from} -> {einops_to}', **
+                                einops_dims), (q_, k_, v_))
 
         # expand cls token keys and values across time or space and concat
         r = q_.shape[0] // cls_k.shape[0]
-        cls_k, cls_v = map(lambda t: repeat(
-            t, 'b () d -> (b r) () d', r=r), (cls_k, cls_v))
+        cls_k, cls_v = map(lambda t: repeat(t, 'b () d -> (b r) () d', r=r),
+                           (cls_k, cls_v))
 
         k_ = torch.cat((cls_k, k_), dim=1)
         v_ = torch.cat((cls_v, v_), dim=1)
@@ -147,40 +161,63 @@ class VarAttention(nn.Module):
 
 
 class SpaceTimeBlock(nn.Module):
-
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, time_init='zeros',
+    def __init__(self,
+                 dim,
+                 num_heads,
+                 mlp_ratio=4.,
+                 qkv_bias=False,
+                 qk_scale=None,
+                 drop=0.,
+                 attn_drop=0.,
+                 drop_path=0.,
+                 act_layer=nn.GELU,
+                 norm_layer=nn.LayerNorm,
+                 time_init='zeros',
                  attention_style='frozen-in-time'):
         super().__init__()
 
         self.norm1 = norm_layer(dim)
-        self.attn = VarAttention(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+        self.attn = VarAttention(dim,
+                                 num_heads=num_heads,
+                                 qkv_bias=qkv_bias,
+                                 qk_scale=qk_scale,
+                                 attn_drop=attn_drop,
+                                 proj_drop=drop)
 
-        self.timeattn = VarAttention(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
-            initialize=time_init)
+        self.timeattn = VarAttention(dim,
+                                     num_heads=num_heads,
+                                     qkv_bias=qkv_bias,
+                                     qk_scale=qk_scale,
+                                     attn_drop=attn_drop,
+                                     proj_drop=drop,
+                                     initialize=time_init)
 
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(
             drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim,
-                       act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(in_features=dim,
+                       hidden_features=mlp_hidden_dim,
+                       act_layer=act_layer,
+                       drop=drop)
         self.norm3 = norm_layer(dim)
 
         self.attention_style = attention_style
 
-    def forward(self, x, einops_from_space, einops_to_space, einops_from_time, einops_to_time,
-                time_n, space_f):
+    def forward(self, x, einops_from_space, einops_to_space, einops_from_time,
+                einops_to_time, time_n, space_f):
 
-        time_output = self.timeattn(self.norm3(
-            x), einops_from_time, einops_to_time, n=time_n)
+        time_output = self.timeattn(self.norm3(x),
+                                    einops_from_time,
+                                    einops_to_time,
+                                    n=time_n)
         time_residual = x + time_output
         #time_residual = x
-        space_output = self.attn(self.norm1(time_residual), einops_from_space,
-                                 einops_to_space, f=space_f)
+        space_output = self.attn(self.norm1(time_residual),
+                                 einops_from_space,
+                                 einops_to_space,
+                                 f=space_f)
         if self.attention_style == 'frozen-in-time':
             space_residual = x + self.drop_path(space_output)
         else:
@@ -207,11 +244,27 @@ class SpaceTimeTransformer(nn.Module):
      - allows for variable length input resolution  (<= (img_size, img_size)) [UNTESTED]
      - different attention block mechanism
     """
-
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=True, qk_scale=None, representation_size=None,
-                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
-                 num_frames=8, time_init='rand', attention_style='frozen-in-time', video_params=None):
+    def __init__(self,
+                 img_size=224,
+                 patch_size=16,
+                 in_chans=3,
+                 num_classes=1000,
+                 embed_dim=768,
+                 depth=12,
+                 num_heads=12,
+                 mlp_ratio=4.,
+                 qkv_bias=True,
+                 qk_scale=None,
+                 representation_size=None,
+                 drop_rate=0.,
+                 attn_drop_rate=0.,
+                 drop_path_rate=0.,
+                 hybrid_backbone=None,
+                 norm_layer=None,
+                 num_frames=8,
+                 time_init='rand',
+                 attention_style='frozen-in-time',
+                 video_params=None):
         """
         Args:
             img_size (int, tuple): input image size
@@ -244,29 +297,21 @@ class SpaceTimeTransformer(nn.Module):
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         print("######USING ATTENTION STYLE: ", attention_style)
 
-        ###############################################################################
-        # added by Mr. Yan
-        self.temporal_type = video_params['temporal_type']
-        self.random_sampling = video_params['random_sampling']
-        self.CLU = video_params['CLU']
-        # print(self.random_sampling*self.clustering)
-        # print(self.random_sampling,self.clustering)
-        # print('test type:', type(self.random_sampling), type(self.clustering))
-        # assert (self.random_sampling and self.clustering)==False # do not limit these two operations
-        ###############################################################################
-
         if hybrid_backbone is not None:
             raise NotImplementedError('hybrid backbone not implemented')
         else:
-            self.patch_embed = VideoPatchEmbed(
-                img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim, num_frames=num_frames)
+            self.patch_embed = VideoPatchEmbed(img_size=img_size,
+                                               patch_size=patch_size,
+                                               in_chans=in_chans,
+                                               embed_dim=embed_dim,
+                                               num_frames=num_frames)
         num_patches = self.patch_embed.num_patches
         self.patches_per_frame = num_patches // num_frames
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(
-            torch.zeros(1, self.patches_per_frame + 1,
-                        embed_dim))  # remember to take pos_embed[1:] for tiling over time
+            torch.zeros(1, self.patches_per_frame + 1, embed_dim)
+        )  # remember to take pos_embed[1:] for tiling over time
         self.temporal_embed = nn.Parameter(
             torch.zeros(1, num_frames, embed_dim))
 
@@ -275,28 +320,35 @@ class SpaceTimeTransformer(nn.Module):
         # stochastic depth decay rule
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
         self.blocks = nn.ModuleList([
-            SpaceTimeBlock(
-                dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[
-                    i], norm_layer=norm_layer, time_init=time_init,
-                attention_style=attention_style)
+            SpaceTimeBlock(dim=embed_dim,
+                           num_heads=num_heads,
+                           mlp_ratio=mlp_ratio,
+                           qkv_bias=qkv_bias,
+                           qk_scale=qk_scale,
+                           drop=drop_rate,
+                           attn_drop=attn_drop_rate,
+                           drop_path=dpr[i],
+                           norm_layer=norm_layer,
+                           time_init=time_init,
+                           attention_style=attention_style)
             #  do_att_temporal=video_params['do_att_temporal'] used to control the temporal fun of this block. Added by Mr. Yan
-            for i in range(depth)])
+            for i in range(depth)
+        ])
         self.norm = norm_layer(embed_dim)
 
         # Representation layer
         if representation_size:
             self.num_features = representation_size
-            self.pre_logits = nn.Sequential(OrderedDict([
-                ('fc', nn.Linear(embed_dim, representation_size)),
-                ('act', nn.Tanh())
-            ]))
+            self.pre_logits = nn.Sequential(
+                OrderedDict([('fc', nn.Linear(embed_dim, representation_size)),
+                             ('act', nn.Tanh())]))
         else:
             self.pre_logits = nn.Identity()
 
         # Classifier head
         self.head = nn.Linear(
-            self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+            self.num_features,
+            num_classes) if num_classes > 0 else nn.Identity()
 
         trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)
@@ -311,28 +363,25 @@ class SpaceTimeTransformer(nn.Module):
         self.einops_from_time = 'b (f n) d'
         self.einops_to_time = '(b n) f d'
 
-        ###############################################################################
-        # added by Mr. Yan
-        if self.CLU:
-            # num_tokens = video_params['num_tokens']
-            # att = video_params['att']
-            # not_plus = video_params['not_plus']
-            # CLU_selecting = video_params['CLU_selecting']
-            # CLU_selecting_start = video_params['CLU_selecting_start']
-            self.CLU_learn_region = video_params['CLU_learn_region']
-            self.CLU_build_tube = video_params['CLU_build_tube']
-            # self.CLU_VTAlign = video_params['CLU_VTAlign']
-            self.CLU_VTAlign = video_params.get('CLU_VTAlign', False)
-            # self.CLU_VTAlign = False
-            # self.CLU_learn_region_size = 8
+        ####################################### ADDED BY MR. YAN ##########################################
+        self.temporal_type = video_params['temporal_type']
+        self.random_sampling = video_params['random_sampling']
 
-            # print("Using Clustering Moudle. %d tokens are used...." %
-            #       (num_tokens))
-            # from model.Visual_Dict import SOHO_Pre_VD
-            # self.visual_dict = SOHO_Pre_VD(num_tokens=2048, token_dim=embed_dim, dist=True)
-            # self.SoftRegion = SoftRegion(num_frames, num_tokens=num_tokens, token_dim=embed_dim, att=att, not_plus=not_plus,
-                                        #  selecting=CLU_selecting, selecting_start=CLU_selecting_start, dist=True, learn_region=self.CLU_learn_region, build_tube=self.CLU_build_tube)
-            self.SoftRegion = video_params['SoftRegion']
+        
+        from model.RegionLearner.RegionLearner import RegionLearner
+        VQ_num_tokens = video_params.get('VQ_num_tokens', None)
+        AGG_region_num = video_params.get('AGG_region_num', None)
+        Interaction_depth = video_params.get('Interaction_depth', None)
+
+
+        # We recommand to run this codebase with distribution mode.
+        self.RegionLearner = None
+        if VQ_num_tokens:
+            self.RegionLearner = RegionLearner(VQ_num_tokens=VQ_num_tokens,
+                                               VQ_token_dim=self.embed_dim,
+                                               AGG_region_num=AGG_region_num,
+                                               Interaction_depth=Interaction_depth,
+                                               dist=True) # 'dist' denotes distribution
 
         if self.random_sampling:
             print("Using Random Sampling Moudle...")
@@ -340,10 +389,10 @@ class SpaceTimeTransformer(nn.Module):
         if self.temporal_type == 'late_fusion_fc':
             # naive concat fusion
             self.late_temporal_fusion = nn.Linear(
-                self.num_features*self.num_frames, self.num_features)
+                self.num_features * self.num_frames, self.num_features)
         elif self.temporal_type == 'late_fusion_pool':
             pass
-        ###############################################################################
+        ####################################### ADDED BY MR. YAN ##########################################
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -369,20 +418,17 @@ class SpaceTimeTransformer(nn.Module):
     def forward_features(self, x, epoch=0):
         # print('test:\t', x.size())
         b, curr_frames, channels, _, _ = x.shape
-        # print('video transformer input size0:\t', x.size())
         x = self.patch_embed(x)
-        # print('video transformer input size1:\t', x.size())
         x = x.flatten(2).transpose(2, 1)
         if self.temporal_type == 'att':
             x = x.reshape(b, -1, self.patch_embed.embed_dim)
             f = curr_frames
         else:
             # do not perform temporal
-            x = x.reshape(b*curr_frames, -1, self.patch_embed.embed_dim) # [b*t, L, C]
+            x = x.reshape(b * curr_frames, -1,
+                          self.patch_embed.embed_dim)  # [b*t, L, C]
             f = 1
 
-
-        # print('video transformer input size2:\t', x.size())
 
         BF = x.shape[0]
         # stole cls_tokens impl from Phil Wang, thanks
@@ -403,123 +449,54 @@ class SpaceTimeTransformer(nn.Module):
         n = self.patches_per_frame
         # f = curr_frames
 
-        # print('video transformer input size3:\t', x.size())
         # may be att temporal do not suitable for sparse frames??? So we test "late temporal fusion"
-
         for i, blk in enumerate(self.blocks):
-            x = blk(x, self.einops_from_space, self.einops_to_space, self.einops_from_time,
+            x = blk(x,
+                    self.einops_from_space,
+                    self.einops_to_space,
+                    self.einops_from_time,
                     self.einops_to_time,
-                    time_n=n, space_f=f)
-            # added by Mr. Yan
-            # do random sampling before the last layer for data aug??
-            # print(i, len(self.blocks)-1)
-            if i == len(self.blocks)-1:  # and self.training:
-
-                if self.CLU:
+                    time_n=n,
+                    space_f=f)
+            ####################################### ADDED BY MR. YAN ##########################################
+            # We insert our module before the last 'output' layer of video encoder.
+            if i == len(self.blocks) - 1:
+                if self.RegionLearner:
                     vd_inputs = x.clone()
                     vd_inputs = vd_inputs[:, 1:, :]
-                    # clu do not support temporal
+                    # Quantization do not support temporal
                     if self.temporal_type == 'att':
-                        vd_inputs = vd_inputs.reshape(b*curr_frames, -1, self.patch_embed.embed_dim)
+                        vd_inputs = vd_inputs.reshape(
+                            b * curr_frames, -1, self.patch_embed.embed_dim)
 
-                    vd_outputs, encoding_indices, region_mask = self.SoftRegion(vd_inputs, curr_frames, epoch)
-                    
+                    vd_outputs, encoding_indices, region_mask = self.RegionLearner(
+                        vd_inputs, curr_frames, epoch)
+
                     # back to temporal shape
                     if self.temporal_type == 'att':
-                        vd_outputs = vd_outputs.reshape(b, -1, self.patch_embed.embed_dim)
+                        vd_outputs = vd_outputs.reshape(
+                            b, -1, self.patch_embed.embed_dim)
 
-
-
-                    # if self.CLU_VTAlign:
-                    #     # do clustering on both visual and text
-                    #     pass
-
-                    # print(curr_frames, self.CLU_build_tube, x.size(0), vd_outputs.size(0))
-                    if self.CLU_learn_region:
+                    # 'Aggregation' of RegionLearner will change the dim of 'x'
+                    if self.RegionLearner.Aggregation:
                         # [B, 1, C] [B, S, C] --> [B, S+1, C]
-                        # print(vd_inputs[:, 0, :].size(), vd_outputs.size())
-                        x = torch.cat([x[:, 0, :].unsqueeze(1), vd_outputs], dim=1)
-                        
-                    elif curr_frames>1 and self.CLU_build_tube and x.size(0)!=vd_outputs.size(0):
-
-                        if self.temporal_type == 'att':
-                            pass
-                        else:
-                            #  [B, L, C].  vd_outputs: b*(T//?), L, C
-                            cls_token = x[:, 0, :]
-                            B, C = cls_token.size()
-                            b = B//curr_frames
-                            cls_token = cls_token.reshape(-1, curr_frames, 1, C) # [b, T, 1, C]
-                            out_temp_size = vd_outputs.size(0)//b
-                            vd_outputs = vd_outputs.reshape(b, -1, *vd_outputs.size()[1:]) # [b, out_temp_size, L, C]
-                            # print(cls_token[:, :out_temp_size,...].size(), vd_outputs.size())
-                            x = torch.cat([cls_token[:, :out_temp_size,...], vd_outputs], dim=-2) # [b, out_temp_size, 1+L, C]
-                            x = x.reshape(b*out_temp_size, -1, C) # [b*out_temp_size, 1+L, C]
-                            # print('x size:\t', x.size())
-                            f = out_temp_size
-
-                            # exit(0)
+                        x = torch.cat([x[:, 0, :].unsqueeze(1), vd_outputs],
+                                      dim=1)
                     else:
                         x[:, 1:, :] = vd_outputs
-                    
-                    
 
                 if self.random_sampling and self.training:
                     # randomly select elements from the sequence of features
                     x[:, 1:, :] = torch.nn.functional.dropout2d(x[:, 1:, :])
-
-
-
-
-
-                # if self.random_sampling:
-                #     # randomly select elements from the sequence of features
-                #     x[:, 1:, :] = torch.nn.functional.dropout2d(x[:, 1:, :])
-                # elif self.clustering:
-                #     vd_inputs = x[:, 1:, :].clone()
-                #     vd_outputs, encoding_indices = self.SoftRegion(vd_inputs)
-                #     x[:, 1:, :] = vd_outputs
-
-                    # # using less embedings to represent a sequence of features
-                    # B, L = x.size()[:2]
-                    # # print('x:\t', x[:, 1:, :].size())
-                    # vd_inputs = x[:, 1:, :].reshape(-1, self.patch_embed.embed_dim) # [BL, C]
-                    # # print('vd_inputs:\t', vd_inputs.size())
-                    # vd_outputs, encoding_indices = self.visual_dict(vd_inputs) # [BL, C]
-                    # encoding_indices = encoding_indices.view(B, int(math.sqrt(L)), int(L//math.sqrt(L)))
-                    # # print('vd_outputs:\t', vd_outputs.size())
-                    # x[:, 1:, :] = vd_outputs.reshape(b, -1, self.patch_embed.embed_dim)
-
-                # exit(0)
-
-        # ###################################################################
-        # # added by Mr. Yan
-        # # do random sampling here for data aug??
-
-        # # print('random_sampling, training:', self.random_sampling, self.training)
-        # # if self.random_sampling and self.training:
-        # if self.random_sampling:
-        #     # do dropout2D
-        #     # print('hidden embedding size:\t', x.size()) # [B, 197, 768]
-        #     x[:, 1:, :] = torch.nn.functional.dropout2d(x[:, 1:, :])
-        #     # print('dropout embedding size:\t', x.size())
-        #     # exit(0)
-
-        # #     sampled_indices = get_random_sample_indices(
-        # #         seq_len=x.shape[1]-1,
-        # #         device=x.device)
-        # #     print(sampled_indices)
-        # #     x = x.index_select(dim=1, index=sampled_indices+1)  # (B, #samples, d) # +1 for skipping the cls_token at the first pos.
-        # # # print('video transformer output size:\t', x.size())
-        # ####################################################################
+            ####################################################################################################
 
         x = self.norm(x)[:, 0]
         x = self.pre_logits(x)
 
+
+        ################################## ADDED BY MR. YAN #####################################################
         # do temporal
-        # print(self.temporal_type)
         if self.temporal_type == 'late_fusion_fc':
-            # print('before temporal fusion size:\t', x.size()) # [BT, C]
             #  [BT, C] --> [B, T*C]
             x = x.reshape(b, -1)
             # naive concat fusion
@@ -527,17 +504,11 @@ class SpaceTimeTransformer(nn.Module):
         elif self.temporal_type == 'late_fusion_pool':
             #  [BT, C] --> [B, T, C]
             x = x.reshape(b, curr_frames, -1)
-            # print(b, curr_frames)
-            # print('reshape x', x.size())
             x = torch.mean(x, 1)
-            # print('mean x', x.size())
-
-            # print('after pooling size:\t', x.size()) # [B, C]
-
-        # print('x size:\t', x.size())
-        # print(b, f)
-        if self.CLU:
+        
+        if self.RegionLearner:
             return x, (encoding_indices, region_mask)
+        ######################################################################################################
         return x, None
 
     def forward(self, x, epoch=0):
@@ -550,11 +521,18 @@ if __name__ == "__main__":
     video_params = {
         'temporal_type': 'late_fusion_pool',
         'random_sampling': 0,
-        'CLU': 0
+        "VQ_num_tokens":2048,
+        "AGG_region_num":8,
+        "Interaction_depth":1,
+        "temporal_type":"att"
     }
 
-    net = SpaceTimeTransformer(num_frames=4, video_params=video_params,
-                               depth=2, num_heads=2, embed_dim=16, img_size=64)  # try by Mr. Yan
+    net = SpaceTimeTransformer(num_frames=4,
+                               video_params=video_params,
+                               depth=2,
+                               num_heads=2,
+                               embed_dim=16,
+                               img_size=64)  # try by Mr. Yan
     net.head = nn.Identity()
     net.pre_logits = nn.Identity()
     inputs = torch.rand(2, 4, 3, 64, 64)  # b,

@@ -4,13 +4,20 @@ from base import BaseModel
 from utils.util import state_dict_data_parallel_fix
 from transformers import AutoModel, AutoTokenizer, AutoModelForSequenceClassification, BertForSequenceClassification, \
     BertTokenizer, T5EncoderModel
+import argparse
 import torch
 import timm
 import os
 from model.video_transformer import SpaceTimeTransformer
+import torchvision
+
+# added by Mr. Yan
+from model.helper import get_random_sample_indices
+from model.helper import save_vis_re
 
 class FrozenInTime(BaseModel):
     def __init__(self,
+                 args,
                  video_params,
                  text_params,
                  projection_dim=256,
@@ -18,14 +25,15 @@ class FrozenInTime(BaseModel):
                  projection='minimal',
                  load_temporal_fix='zeros'):
         super().__init__()
-
+        self.args = args
         self.video_params = video_params
         self.text_params = text_params
         self.load_temporal_fix = load_temporal_fix
         if not text_params['pretrained']:
             raise NotImplementedError("Huggingface text models require pretrained init.")
 
-        self.text_model = AutoModel.from_pretrained(text_params['model'])
+        print('here', '/'.join((text_params['pretrained_path'], text_params['model'])))
+        self.text_model = AutoModel.from_pretrained('/'.join((text_params['pretrained_path'], text_params['model'])))
         self.text_model.train()
 
         pretrained = video_params['pretrained']
@@ -36,10 +44,11 @@ class FrozenInTime(BaseModel):
             arch_config = video_params.get('arch_config', 'base_patch16_224')
             vit_init = video_params.get('vit_init', 'imagenet-21k')
             if arch_config == 'base_patch16_224':
-                vit_model = timm.models.vision_transformer.vit_base_patch16_224(pretrained=pretrained)
+                vit_model = torch.load("pretrained/jx_vit_base_p16_224-80ecf9dd.pth", map_location="cpu")
                 model = SpaceTimeTransformer(num_frames=num_frames,
                                             time_init=time_init,
-                                            attention_style=attention_style)
+                                            attention_style=attention_style,
+                                            video_params=video_params) # try by Mr. Yan
             else:
                 raise NotImplementedError
 
@@ -47,14 +56,18 @@ class FrozenInTime(BaseModel):
             model.pre_logits = nn.Identity()
             ftr_dim = model.embed_dim
             if load_checkpoint in ["", None]:
-                vit_checkpoint = vit_model.state_dict()
-                model.load_state_dict(vit_checkpoint, strict=False)
+                # vit_checkpoint = vit_model.state_dict()
+                vit_checkpoint = vit_model
+                new_vit_dict = state_dict_data_parallel_fix(vit_checkpoint, model.state_dict())
+                model.load_state_dict(new_vit_dict, strict=False)
             self.video_model = model
+
+            # for backwards compatibility (old models)
+            self.video_model.fc = nn.Identity()
         else:
             raise NotImplementedError(f"{video_params['model']} not implemented")
 
-        # for backwards compatibility (old models)
-        self.video_model.fc = nn.Identity()
+
 
         # Project to a common embedding
         if projection == 'minimal':
@@ -74,28 +87,41 @@ class FrozenInTime(BaseModel):
         self.vid_proj = vid_proj
 
         if load_checkpoint not in ["", None]:
-            checkpoint = torch.load(load_checkpoint)
+            checkpoint = torch.load(load_checkpoint, map_location='cuda:{}'.format(self.args.local_rank))
+            #checkpoint = torch.load(load_checkpoint)
             state_dict = checkpoint['state_dict']
             new_state_dict = state_dict_data_parallel_fix(state_dict, self.state_dict())
             new_state_dict = self._inflate_positional_embeds(new_state_dict)
-            self.load_state_dict(new_state_dict, strict=False)
+            # self.load_state_dict(new_state_dict, strict=True)
+            missing_keys, unexpected_keys = self.load_state_dict(new_state_dict, strict=False)
+            print('missing_keys:\t', missing_keys)
+            print('unexpected_keys:\t', unexpected_keys)
+
+            
 
     def set_device(self, device):
         self.device = device
 
     def forward_test(self, video):
-
         video_embeddings = self.compute_video(video)
-
         return video_embeddings
 
-    def forward(self, data, return_embeds=True):
-
+    def forward(self, data, return_embeds=True, epoch=0):
+        # meta_arr = {'raw_captions': caption, 'paths': rel_fp, 'dataset': self.dataset_name}
+        # data = {'video': final, 'text': caption, 'meta': meta_arr, 'frame_idxs': idxs}
         text_data = data['text']
         video_data = data['video']
+        # meta_data = data['meta']
 
         text_embeddings = self.compute_text(text_data)
-        video_embeddings = self.compute_video(video_data)
+        # with torch.autograd.set_detect_anomaly(True):
+        video_embeddings, tmp_re = self.compute_video(video_data, epoch)
+
+        # added by Mr. YAN
+        if self.args.vis_saving and self.args.debug:
+            save_vis_re(data, tmp_re, save_pth='tmp_result/vis')
+            exit(0)
+
 
         if return_embeds:
             return text_embeddings, video_embeddings
@@ -113,10 +139,60 @@ class FrozenInTime(BaseModel):
         text_embeddings = self.txt_proj(text_embeddings)
         return text_embeddings
 
-    def compute_video(self, video_data):
-        video_embeddings = self.video_model(video_data)
+
+
+
+
+
+    def compute_video(self, video_data, epoch=0):
+
+        ##################### reshape inputs ####################
+        # added by Mr. Yan
+        if 'resnet' in self.video_params['model']:
+            # no temporal
+            # print('The size of input video data:', video_data.size())
+            video_data = video_data.view(-1, *video_data.size()[2:])
+        elif 'MViT' in self.video_params['model']:
+            # print('The size of input video data:', video_data.size()) # B, T, C, H, W
+            video_data = video_data.transpose(1, 2) # B, C, T, H, W
+        
+        ########################## forward #######################
+        if 'Transformer' in self.video_params['model']:
+            video_embeddings, tmp_re = self.video_model(video_data, epoch)
+        else:
+            video_embeddings, tmp_re = self.video_model(video_data)
+
+        # print('video_embeddings size:\t', video_embeddings.size())
+
+        
+        ################## reshape outputs ######################
+        if 'resnet' in self.video_params['model']:
+            video_embeddings = video_embeddings.view(*video_embeddings.size()[:2], -1)
+            # do random sampling here for data aug??
+            # print('random_sampling, training:', self.video_params['random_sampling'], self.training)
+            # if self.video_params['random_sampling'] and self.training:
+            if self.video_params['random_sampling'] and self.training:
+                # print('video_embeddings size:\t', video_embeddings.size())
+                sampled_indices = get_random_sample_indices(
+                    seq_len=video_embeddings.shape[-1],
+                    device=video_embeddings.device)
+
+                # video_embeddings[:,:,:,sampled_indices] = 0
+                video_embeddings = video_embeddings.index_select(
+                    dim=-1, index=sampled_indices)  # (B, #samples, d)
+                # print('video_embeddings size:\t', video_embeddings.size())
+            video_embeddings = self.new_pool(video_embeddings)
+            video_embeddings = video_embeddings.squeeze()
+        # exit(0)
+        # print('video_embeddings size:\t', video_embeddings.size())
+        elif 'MViT' in self.video_params['model']:
+            pass
+    
+        
         video_embeddings = self.vid_proj(video_embeddings)
-        return video_embeddings
+
+
+        return video_embeddings, tmp_re
 
     def _inflate_positional_embeds(self, new_state_dict):
         # allow loading of timesformer with fewer num_frames
@@ -172,6 +248,25 @@ def sim_matrix(a, b, eps=1e-8):
     b_norm = b / torch.max(b_n, eps * torch.ones_like(b_n))
     sim_mt = torch.mm(a_norm, b_norm.transpose(0, 1))
     return sim_mt
+
+
+
+# added by Mr. Yan
+# def load_part_state_dict(model, pretrained_dict):
+#     model_dict = model.state_dict()
+#     ## print(model_dict)
+#     # 1. filter out unnecessary keys
+#     pretrained_dict = {}
+#     for k, v in pretrained_dict.items():
+#         if k in model_dict:
+#             pretrained_dict[k] = v
+#         else:
+#             print(k, 'can not exsiting current model!')
+#     # pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+#     # 2. overwrite entries in the existing state dict
+#     model_dict.update(pretrained_dict)
+#     # 3. load the new state dict
+#     model.load_state_dict(model_dict)
 
 
 if __name__ == "__main__":

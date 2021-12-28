@@ -5,10 +5,7 @@ import os
 
 class LSMDC(TextVideoDataset):
     def _load_metadata(self):
-        # metadata_dir = 'your_path_to_dataset/LSMDC/meta_data/'
-        metadata_dir = './meta_data/LSMDC'
-
-
+        # metadata_dir = './meta_data/LSMDC'
         split_files = {
             # 'train': 'LSMDC16_annos_training.csv',
             'train': 'LSMDC16_annos_training.csv',
@@ -17,13 +14,13 @@ class LSMDC(TextVideoDataset):
             'test': 'LSMDC16_challenge_1000_publictect.csv'
         }
         target_split_fp = split_files[self.split]
-        metadata = pd.read_csv(os.path.join(metadata_dir, target_split_fp), sep='\t')
+        metadata = pd.read_csv(os.path.join(self.metadata_dir, target_split_fp), sep='\t')
         if self.subsample < 1:
             metadata = metadata.sample(frac=self.subsample)
         self.metadata = metadata
         print("load split {}, {} samples".format(self.split, len(metadata)))
         self.miss_vid_cnt = 0
-        # your_path_to_dataset/MSVD/YouTubeClips
+        # data/MSVD/YouTubeClips
 
     def _get_video_path(self, sample):
         video_fp = sample[0]

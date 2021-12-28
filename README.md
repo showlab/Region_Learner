@@ -9,11 +9,13 @@ Overall, this code is built on PyTorch with DistributedDataParallel (DDP).
 - Create conda env and install required packages via `sh install_env.sh`
 - Create some important folders
 	1. `mkdir data` (you can symlink huge datasets to this folder)
-	2. `mkdir results`
-- Download WebVid-2M (see https://github.com/m-bain/webvid)
-- Download CC3M (see https://ai.google.com/research/ConceptualCaptions/download)
+	2. `meta_data` (put meta data of each dataset here)
+	3. `mkdir results`
+- Download Pre-training data
+	1. Download WebVid-2M (see https://github.com/m-bain/webvid)
+	2. Download CC3M (see https://ai.google.com/research/ConceptualCaptions/download)
 
-PS: Not all videos are avaible so that you need to modify the metadata depend on your case. We also provide our metadata in here.
+PS: Not all videos are avaible so that you need to modify the metadata depend on your case. We also provide our metadata in [here]("").
 
 
 ## Pre-training 
@@ -23,9 +25,8 @@ PS: Not all videos are avaible so that you need to modify the metadata depend on
 - Download data (see https://github.com/m-bain/frozen-in-time#-finetuning-benchmarks-msr-vtt)
 - Run `sh fine-tune.sh`.
 
-
 ## Pre-trained Weights
-Coming soon.
+[WebVid2M + CC3M]("")
 
 ## Acknowledgements 
 This code is based off [Frozen in Time](https://github.com/m-bain/frozen-in-time "Frozen in Time")

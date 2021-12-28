@@ -35,3 +35,12 @@ This code is based off [Frozen in Time](https://github.com/m-bain/frozen-in-time
 
 
 
+## Citation
+```
+@article{yan2021video,
+  title={Video-Text Pre-training with Learned Regions},
+  author={Yan, Rui and Shou, Mike Zheng and Ge, Yixiao and Wang, Alex Jinpeng and Lin, Xudong and Cai, Guanyu and Tang, Jinhui},
+  journal={arXiv preprint arXiv:2112.01194},
+  year={2021}
+}
+```

@@ -15,7 +15,7 @@ Overall, this code is built on PyTorch with DistributedDataParallel (DDP).
 	1. Download WebVid-2M (see https://github.com/m-bain/webvid)
 	2. Download CC3M (see https://ai.google.com/research/ConceptualCaptions/download)
 
-PS: Not all videos are avaible so that you need to modify the metadata depend on your case. We also provide our metadata in [here]("https://drive.google.com/drive/folders/1y9Byj2IFWSyeGiyJJwc2VPIESzakGHAh?usp=sharing").
+PS: Not all videos are avaible so that you need to modify the metadata depend on your case. We also provide our metadata in [here](https://drive.google.com/drive/folders/1y9Byj2IFWSyeGiyJJwc2VPIESzakGHAh?usp=sharing).
 
 
 ## Pre-training 
@@ -26,7 +26,7 @@ PS: Not all videos are avaible so that you need to modify the metadata depend on
 - Run `sh fine-tune.sh`.
 
 ## Pre-trained Weights
-[WebVid2M + CC3M]("https://drive.google.com/file/d/1ql5PDgaTqA9pQcBb1cYRGkH3IfbbUkSv/view?usp=sharing")
+[WebVid2M + CC3M](https://drive.google.com/file/d/1ql5PDgaTqA9pQcBb1cYRGkH3IfbbUkSv/view?usp=sharing)
 
 ## Acknowledgements 
 This code is based off [Frozen in Time](https://github.com/m-bain/frozen-in-time "Frozen in Time")

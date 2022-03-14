@@ -15,7 +15,7 @@ Overall, this code is built on PyTorch with DistributedDataParallel (DDP).
 	1. Download WebVid-2M (see https://github.com/m-bain/webvid)
 	2. Download CC3M (see https://ai.google.com/research/ConceptualCaptions/download)
 
-PS: Not all videos are avaible so that you need to modify the metadata depend on your case. We also provide our metadata in [here](https://drive.google.com/drive/folders/1y9Byj2IFWSyeGiyJJwc2VPIESzakGHAh?usp=sharing).
+PS: Not all videos are available so you need to modify the metadata depending on your case. We also provide our metadata in [here](https://drive.google.com/drive/folders/1y9Byj2IFWSyeGiyJJwc2VPIESzakGHAh?usp=sharing).
 
 
 ## Pre-training 

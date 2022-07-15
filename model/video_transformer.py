@@ -372,6 +372,9 @@ class SpaceTimeTransformer(nn.Module):
         VQ_num_tokens = video_params.get('VQ_num_tokens', None)
         AGG_region_num = video_params.get('AGG_region_num', None)
         Interaction_depth = video_params.get('Interaction_depth', None)
+        # debug now
+        Motion_Excitation = video_params.get('Motion_Excitation', None)
+        # self.RL_before_pos = video_params.get('RL_before_pos', 1)
 
 
         # We recommand to run this codebase with distribution mode.
@@ -381,6 +384,7 @@ class SpaceTimeTransformer(nn.Module):
                                                VQ_token_dim=self.embed_dim,
                                                AGG_region_num=AGG_region_num,
                                                Interaction_depth=Interaction_depth,
+                                               ME=Motion_Excitation, # debug now
                                                dist=True) # 'dist' denotes distribution
 
         if self.random_sampling:
@@ -460,7 +464,9 @@ class SpaceTimeTransformer(nn.Module):
                     space_f=f)
             ####################################### ADDED BY MR. YAN ##########################################
             # We insert our module before the last 'output' layer of video encoder.
+            # print('before RegionLearner', x.size())
             if i == len(self.blocks) - 1:
+                # print('RL_before_pos', self.RL_before_pos)
                 if self.RegionLearner:
                     vd_inputs = x.clone()
                     vd_inputs = vd_inputs[:, 1:, :]
@@ -479,6 +485,9 @@ class SpaceTimeTransformer(nn.Module):
 
                     # 'Aggregation' of RegionLearner will change the dim of 'x'
                     if self.RegionLearner.Aggregation:
+
+                        n = vd_outputs.size(1) # added by Mr. YAN
+
                         # [B, 1, C] [B, S, C] --> [B, S+1, C]
                         x = torch.cat([x[:, 0, :].unsqueeze(1), vd_outputs],
                                       dim=1)
@@ -489,9 +498,13 @@ class SpaceTimeTransformer(nn.Module):
                     # randomly select elements from the sequence of features
                     x[:, 1:, :] = torch.nn.functional.dropout2d(x[:, 1:, :])
             ####################################################################################################
-
-        x = self.norm(x)[:, 0]
-        x = self.pre_logits(x)
+        if self.RegionLearner:
+            x = self.norm(x)
+            x = x[:, 0] + torch.mean(x[:, 1:], dim=1)
+            x = self.pre_logits(x)
+        else:
+            x = self.norm(x)[:, 0]
+            x = self.pre_logits(x)
 
 
         ################################## ADDED BY MR. YAN #####################################################

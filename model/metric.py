@@ -37,6 +37,8 @@ def t2v_metrics(sims, query_masks=None):
                for ii in range(jj * queries_per_video, (jj + 1) * queries_per_video)]
               for jj in range(num_vids)]
     gt_idx = np.array(gt_idx)
+    # print('gt_idx:', gt_idx, num_queries, num_vids)
+    # print('gt_idx:', gt_idx)
     gt_dists = dists.reshape(-1)[gt_idx.reshape(-1)]
     gt_dists = gt_dists[:, np.newaxis]
     rows, cols = np.where((sorted_dists - gt_dists) == 0)  # find column position of GT
@@ -138,6 +140,8 @@ def v2t_metrics(sims, query_masks=None):
     # switch axes of text and video
     sims = sims.T
 
+    # print('sims:', sims)
+
     if False:
         # experiment with toy example
         sims = np.ones((3, 3))
@@ -148,6 +152,8 @@ def v2t_metrics(sims, query_masks=None):
 
     assert sims.ndim == 2, "expected a matrix"
     num_queries, num_caps = sims.shape
+    # print('num_queries, num_caps', num_queries, num_caps)
+
     dists = -sims
     caps_per_video = num_caps // num_queries
     break_ties = "averaging"
@@ -363,3 +369,37 @@ def video_precision_adj(output, target):
     denom = len(target[:, :, 0].unique())
 
     return correct / denom
+
+
+def cls_as_retrieval(similarity, class_id):
+    """
+    docstring
+    """
+    similarity = similarity.T
+    similarity = torch.from_numpy(similarity)
+    num_queries, _ = similarity.shape
+    values_1, indices_1 = similarity.topk(1, dim=-1)
+    values_5, indices_5 = similarity.topk(5, dim=-1)
+    # print('similarity shape:', similarity.shape)
+    # print('class_id:', len(class_id))
+    # print('indices_1:', indices_1)
+    # print('indices_5:', indices_5)
+
+    corr_1, corr_5 = 0, 0
+    for i in range(num_queries):
+        if indices_1[i] == class_id[i]:
+            corr_1 += 1
+        if class_id[i] in indices_5[i]:
+            corr_5 += 1
+    top1 = float(corr_1) / num_queries * 100
+    top5 = float(corr_5) / num_queries * 100
+    return top1, top5
+
+def mc_as_retrieval(similarity, answer_id):
+    # print(similarity.size(), answer_id.size())
+    # print(similarity[0], answer_id[0])
+    # num_queries, _ = similarity.size()
+    # values_1, indices_1 = similarity.topk(1, dim=-1)
+    # values_5, indices_5 = similarity.topk(5, dim=-1)
+    # print(indices_1, answer_id)
+    return acc(similarity, answer_id)

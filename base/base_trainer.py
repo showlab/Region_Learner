@@ -200,8 +200,8 @@ class Multi_BaseTrainer_dist:
             'monitor_best': self.mnt_best,
             'config': self.config
         }
-        filename = str(self.checkpoint_dir / 'checkpoint-epoch{}.pth'.format(epoch))
-        # filename = str(self.checkpoint_dir / 'model_latest.pth') # do not loging each model for saving storage
+        # filename = str(self.checkpoint_dir / 'checkpoint-epoch{}.pth'.format(epoch))
+        filename = str(self.checkpoint_dir / 'model_latest.pth') # do not loging each model for saving storage
 
         torch.save(state, filename)
         self.logger.info("Saving checkpoint: {} ...".format(filename))

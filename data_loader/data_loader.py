@@ -1,11 +1,13 @@
 from base import BaseDataLoader, BaseDataLoaderExplicitSplit, DistBaseDataLoaderExplicitSplit, MultiDistBaseDataLoaderExplicitSplit, BaseMultiDataLoader
 from data_loader.transforms import init_transform_dict, init_video_transform_dict
 from data_loader.ConceptualCaptions_dataset import ConceptualCaptions3M
-from data_loader.MSRVTT_dataset import MSRVTT
-from data_loader.MSVD_dataset import MSVD
+from data_loader.MSRVTT_dataset import MSRVTT, MSRVTT_MC, MSRVTT_QA
+from data_loader.MSVD_dataset import MSVD, MSVD_QA
 from data_loader.DiDeMo_dataset import DiDeMo
-from data_loader.LSMDC_dataset import LSMDC
+from data_loader.LSMDC_dataset import LSMDC, LSMDC_MC
 from data_loader.WebVid_dataset import WebVid
+from data_loader.HMDB_dataset import HMDB
+from data_loader.UCF_dataset import UCF
 
 
 def dataset_loader(dataset_name,
@@ -34,28 +36,40 @@ def dataset_loader(dataset_name,
     )
 
     # TODO: change to...
-    #  dataset = globals()[dataset_name]
+    dataset = globals()[dataset_name](**kwargs)
     #  ...is this safe / or just lazy?
-    if dataset_name == "MSRVTT":
-        dataset = MSRVTT(**kwargs)
-    elif dataset_name == "MSVD":
-        dataset = MSVD(**kwargs)
-    elif dataset_name == "DIDEMO":
-        dataset = DiDeMo(**kwargs)
-    elif dataset_name == "SomethingSomethingV2":
-        dataset = SomethingSomethingV2(**kwargs)
-    elif dataset_name == "WebVid":
-        dataset = WebVid(**kwargs)
-    elif dataset_name == "ConceptualCaptions3M":
-        dataset = ConceptualCaptions3M(**kwargs)
-    elif dataset_name == "ConceptualCaptions12M":
-        dataset = ConceptualCaptions12M(**kwargs)
-    elif dataset_name == "LSMDC":
-        dataset = LSMDC(**kwargs)
-    elif dataset_name == "COCOCaptions":
-        dataset = COCOCaptions(**kwargs)
-    else:
-        raise NotImplementedError(f"Dataset: {dataset_name} not found.")
+    # if dataset_name == "HMDB":
+    #     dataset = HMDB(**kwargs)
+    # elif dataset_name == "UCF":
+    #     dataset = UCF(**kwargs)
+    # elif dataset_name == "MSRVTT":
+    #     dataset = MSRVTT(**kwargs)
+    # elif dataset_name == "MSRVTT_MC":
+    #     dataset = MSRVTT_MC(**kwargs)
+    # elif dataset_name == "MSRVTT_QA":
+    #     dataset = MSRVTT_QA(**kwargs)
+    # elif dataset_name == "LSMDC":
+    #     dataset = LSMDC(**kwargs)
+    # elif dataset_name == "LSMDC_MC":
+    #     dataset = LSMDC_MC(**kwargs)
+    # elif dataset_name == "MSVD":
+    #     dataset = MSVD(**kwargs)
+    # elif dataset_name == "MSVD_QA":
+    #     dataset = MSVD_QA(**kwargs)
+    # elif dataset_name == "DIDEMO":
+    #     dataset = DiDeMo(**kwargs)
+    # elif dataset_name == "SomethingSomethingV2":
+    #     dataset = SomethingSomethingV2(**kwargs)
+    # elif dataset_name == "WebVid":
+    #     dataset = WebVid(**kwargs)
+    # elif dataset_name == "ConceptualCaptions3M":
+    #     dataset = ConceptualCaptions3M(**kwargs)
+    # elif dataset_name == "ConceptualCaptions12M":
+    #     dataset = ConceptualCaptions12M(**kwargs)
+    # elif dataset_name == "COCOCaptions":
+    #     dataset = COCOCaptions(**kwargs)
+    # else:
+    #     raise NotImplementedError(f"Dataset: {dataset_name} not found.")
 
     return dataset
 
@@ -172,3 +186,4 @@ class TextVideoMultiDataLoader(BaseMultiDataLoader):
             dl = globals()[dcfg['type']](**dcfg['args'])
             dls.append(dl)
         super().__init__(dls)
+

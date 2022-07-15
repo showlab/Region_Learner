@@ -40,21 +40,59 @@ class Aggregation(nn.Module):
         return learned_regions, region_mask # [B, C, S]
 
 
+class Motion_Excitation(nn.Module):
+    """
+    It is designed to xxx
+    """
+    def __init__(self, token_dim):
+        super(Motion_Excitation, self).__init__()
+        self.ex_proj = nn.Conv2d(in_channels=token_dim,
+                        out_channels=1, # each channel used as att map for capturing one region
+                        kernel_size=3,
+                        padding=1
+                        )
+        print("Performing Motion Excitation ...")
+
+    def ex(self, x, h, w):
+        # X: [B, T, L, C]
+        _, T, L, C = x.size()
+        x = x.reshape(-1, L, C) #[B*T, L, C]
+        x = x.transpose(1, 2) #[B*T, C, L]
+        x = x.reshape(-1, C, h, w)
+        motion_map = self.ex_proj(x) # [B*T, 1, H, W]
+        motion_map = motion_map.reshape(-1, T, L)
+        return motion_map
+
+    def forward(self, x, h, w):
+        # X: [B, T, L, C]
+        # shift X:
+        T = x.size(1)
+        x_ = x.clone()
+        x_[:,1:,...] = x[:,:T-1,...]
+        motion_map = self.ex(x - x_, h, w) # [B, T, L]
+        motion_map = F.softmax(motion_map, dim=-1) # [B, T, L]
+        # motion_map = F.softmax(fc(fc(x_) - x), dim=-1)
+        # print('motion_map:', x.size(), motion_map.size())
+        motaion_feas = x * motion_map.unsqueeze(-1) # [B, T, L, C]
+        return motaion_feas
 
 
 class RegionLearner(nn.Module):
     """
     Learning implicit regions without supervision from video feature map.
     """
-    def __init__(self, VQ_num_tokens=None, VQ_token_dim=768, AGG_region_num=None, Interaction_depth=None, dist=False):
+    def __init__(self, VQ_num_tokens=None, VQ_token_dim=768, AGG_region_num=None, Interaction_depth=None, ME=None, dist=False):
         super(RegionLearner, self).__init__()
         self.Quantization = None
         self.Aggregation = None
         self.Interaction = None
+        self.Motion_Excitation = None
         
 
         if VQ_num_tokens and VQ_token_dim:
             self.Quantization = VectorQuantizer(VQ_num_tokens, VQ_token_dim, dist=dist)
+            if ME:
+                self.Motion_Excitation = Motion_Excitation(VQ_token_dim)
             
 
         if AGG_region_num:
@@ -76,6 +114,17 @@ class RegionLearner(nn.Module):
             h = int(math.sqrt(L))
             w = int(L//h)
             encoding_indices = encoding_indices.reshape(-1, h, w)
+
+            # Perform Motion Excitation
+            if cur_f>1 and self.Motion_Excitation:
+                in_feas = in_feas.view(-1, cur_f, L, C)
+                motion_feas = self.Motion_Excitation(in_feas, h, w) # [B, T, L, C]
+                motion_feas = motion_feas.reshape(-1, C)
+                # print('size:', motion_feas.size(), vd_outputs.size())
+                vd_outputs = vd_outputs + motion_feas
+                # vd_outputs = torch.cat([vd_outputs,motion_feas], dim=-1)
+
+            
 
         
         if self.Aggregation:
@@ -108,14 +157,17 @@ class RegionLearner(nn.Module):
             return vd_outputs, encoding_indices, None
 
 
+
+
+
 if __name__ == "__main__":
-    B, T, L = 2, 1, 196
+    B, T, L = 2, 2, 196
     token_dim = 768
     num_tokens = 2048
-    RL = RegionLearner(VQ_num_tokens=num_tokens, VQ_token_dim=token_dim, AGG_region_num=8, Interaction_depth=1, dist=False)
+    RL = RegionLearner(VQ_num_tokens=num_tokens, VQ_token_dim=token_dim, AGG_region_num=8, Interaction_depth=1, dist=False, ME=True)
     inputs = torch.randn(B*T, L, token_dim)
     print('Input of RegionLearner:\t', inputs.size())
-    outputs, encoding_indices, region_mask = RL(inputs)
+    outputs, encoding_indices, region_mask = RL(inputs, T)
     print('Output of RegionLearner:\t', outputs.size())
     print('Encoding Indices of Quantization:\t', encoding_indices.size())
     if region_mask is not None:

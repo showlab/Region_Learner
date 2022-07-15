@@ -65,7 +65,7 @@ class MaxMarginRankingLoss(nn.Module):
 class CrossEntropy(nn.Module):
     def __init__(self):
         super().__init__()
-        self.loss = nn.CrossEntropyLoss()
+        self.loss = nn.CrossEntropyLoss(ignore_index=-1)
 
     def forward(self, output, target):
         return self.loss(output, target)

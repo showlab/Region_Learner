@@ -1,5 +1,5 @@
 {
-    "name": "MSRVTTjsfusion_8f_stformer_pt-im21k",
+    "name": "MSRVTTjsfusion_8f",
     "n_gpu": 4,
     "arch": {
         "type": "FrozenInTime",
@@ -28,7 +28,7 @@
             "type": "MultiDistTextVideoDataLoader",
             "args":{
                 "dataset_name": "MSRVTT",
-                "data_dir": "data/MSRVTT/",
+                "data_dir": "data/MSRVTT/MSRVTT_source/",
                 "reader":"decord",
                 "shuffle": true,
                 "num_workers": 16,
@@ -67,7 +67,7 @@
     "trainer": {
         "epochs": 100,
         "max_samples_per_epoch": 9000,
-        "save_dir": "exps",
+        "save_dir": "./results/ft/MSRVTT/",
         "save_period": 5,
         "verbosity": 2,
         "monitor": "min val_loss_0",

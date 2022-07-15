@@ -14,6 +14,9 @@ import torchvision
 # added by Mr. Yan
 from model.helper import get_random_sample_indices
 from model.helper import save_vis_re
+from model.qa_model import BUTDQAHead
+from model.clip import clip
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class FrozenInTime(BaseModel):
     def __init__(self,
@@ -33,8 +36,20 @@ class FrozenInTime(BaseModel):
             raise NotImplementedError("Huggingface text models require pretrained init.")
 
         print('here', '/'.join((text_params['pretrained_path'], text_params['model'])))
-        self.text_model = AutoModel.from_pretrained('/'.join((text_params['pretrained_path'], text_params['model'])))
-        self.text_model.train()
+        if text_params['model'] == "CLIP":
+            # self.clip_tokenizer = ClipTokenizer()
+            pass # we load the whole clip following 
+        else:
+            self.text_model = AutoModel.from_pretrained('/'.join((text_params['pretrained_path'], text_params['model'])))
+            self.text_model.train()
+
+
+        # TODO: need a better arg as the condition
+        num_ans = video_params.get('num_ans', -1)
+        if num_ans>0:
+            self.QA_head = BUTDQAHead(v_dim=projection_dim, q_dim=projection_dim, hid_dim=projection_dim, num_ans=num_ans)
+        else:
+            self.QA_head = None
 
         pretrained = video_params['pretrained']
         if video_params['model'] == "SpaceTimeTransformer":
@@ -64,6 +79,12 @@ class FrozenInTime(BaseModel):
 
             # for backwards compatibility (old models)
             self.video_model.fc = nn.Identity()
+
+        elif video_params['model'] == "CLIP":
+            model, preprocess = clip.load("ViT-B/32", device=device)
+            self.clip_model = model.float().train()
+            ftr_dim = model.visual.output_dim
+            # image_features = model.encode_image(image)
         else:
             raise NotImplementedError(f"{video_params['model']} not implemented")
 
@@ -93,6 +114,7 @@ class FrozenInTime(BaseModel):
             new_state_dict = state_dict_data_parallel_fix(state_dict, self.state_dict())
             new_state_dict = self._inflate_positional_embeds(new_state_dict)
             # self.load_state_dict(new_state_dict, strict=True)
+            # print(vid_proj)
             missing_keys, unexpected_keys = self.load_state_dict(new_state_dict, strict=False)
             print('missing_keys:\t', missing_keys)
             print('unexpected_keys:\t', unexpected_keys)
@@ -122,6 +144,10 @@ class FrozenInTime(BaseModel):
             save_vis_re(data, tmp_re, save_pth='tmp_result/vis')
             exit(0)
 
+        # for QA
+        if self.QA_head:
+            # QA head is a simple fc
+            return self.QA_head(video_embeddings, text_embeddings)
 
         if return_embeds:
             return text_embeddings, video_embeddings
@@ -134,6 +160,9 @@ class FrozenInTime(BaseModel):
                 'pooler_output']
         elif self.text_params['model'].startswith('distilbert'):
             text_embeddings = self.text_model(**text_data).last_hidden_state[:, 0, :]
+        elif 'CLIP' in self.text_params['model']:
+            text_data = clip.tokenize(text_data, truncate=True).to(device)
+            text_embeddings = self.clip_model.encode_text(text_data)
         else:
             raise NotImplementedError
         text_embeddings = self.txt_proj(text_embeddings)
@@ -145,7 +174,7 @@ class FrozenInTime(BaseModel):
 
 
     def compute_video(self, video_data, epoch=0):
-
+        T = video_data.size(1)
         ##################### reshape inputs ####################
         # added by Mr. Yan
         if 'resnet' in self.video_params['model']:
@@ -155,12 +184,27 @@ class FrozenInTime(BaseModel):
         elif 'MViT' in self.video_params['model']:
             # print('The size of input video data:', video_data.size()) # B, T, C, H, W
             video_data = video_data.transpose(1, 2) # B, C, T, H, W
+        elif 'CLIP' in self.video_params['model']:
+            # print('The size of input video data:', video_data.size()) 
+            video_data = video_data.view(-1, *video_data.size()[2:]) # B*T, C, H, W
         
         ########################## forward #######################
-        if 'Transformer' in self.video_params['model']:
-            video_embeddings, tmp_re = self.video_model(video_data, epoch)
+        if 'CLIP' in self.video_params['model']:
+            # print('The size of input video data:', video_data.size()) 
+            # print('The res of model:', self.clip_model.visual.input_resolution) 
+            video_embeddings = self.clip_model.encode_image(video_data)
+            if T>1:
+                # print('The size of video_embeddings 1:', video_embeddings.size())
+                video_embeddings = video_embeddings.reshape(-1, T, *video_embeddings.size()[1:])
+                # print('The size of video_embeddings 2:', video_embeddings.size())
+                video_embeddings = torch.mean(video_embeddings, 1).squeeze()
+                # print('The size of video_embeddings 3:', video_embeddings.size())
+            tmp_re = None
         else:
-            video_embeddings, tmp_re = self.video_model(video_data)
+            if 'Transformer' in self.video_params['model']:
+                video_embeddings, tmp_re = self.video_model(video_data, epoch)
+            else:
+                video_embeddings, tmp_re = self.video_model(video_data)
 
         # print('video_embeddings size:\t', video_embeddings.size())
 
@@ -188,7 +232,6 @@ class FrozenInTime(BaseModel):
         elif 'MViT' in self.video_params['model']:
             pass
     
-        
         video_embeddings = self.vid_proj(video_embeddings)
 
 

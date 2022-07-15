@@ -42,26 +42,29 @@ def run():
         print('local_rank: ', args.local_rank, flush=True)
     # build tokenizer
     text_params = config['arch']['args']['text_params']
-    print('here', '/'.join((text_params['pretrained_path'], text_params['model'])))
-    tokenizer = transformers.AutoTokenizer.from_pretrained('/'.join((text_params['pretrained_path'], text_params['model'])),
-                                                           TOKENIZERS_PARALLELISM=False)
-
-    # setup data_loader instances
-    # data_loader, valid_data_loader = init_dataloaders(config, module_data)
-    dataset_name = config['data_loader'][0]['args']['dataset_name']
-    if dataset_name in ['MSVD', 'DiDeMo', 'LSMDC'] and False:
-        data_loader, valid_data_loader = init_dataloaders(config, module_data, mode='val')
-        # get test data loader by the same function
-        _, test_data_loader = init_dataloaders(config, module_data, mode='test')
+    # print('here', '/'.join((text_params['pretrained_path'], text_params['model'])))
+    if 'CLIP' in text_params['model']:
+        tokenizer = None
     else:
-        data_loader, valid_data_loader = init_dataloaders(config, module_data, mode='val')
+        tokenizer = transformers.AutoTokenizer.from_pretrained('/'.join((text_params['pretrained_path'], text_params['model'])),
+                                                           TOKENIZERS_PARALLELISM=False)
+    
+    # setup data_loader instances
+    data_loader, valid_data_loader = init_dataloaders(config, module_data)
+    # dataset_name = config['data_loader'][0]['args']['dataset_name']
+    # if dataset_name in ['MSVD', 'DiDeMo', 'LSMDC'] and False:
+    #     data_loader, valid_data_loader = init_dataloaders(config, module_data, mode='val')
+    #     # get test data loader by the same function
+    #     _, test_data_loader = init_dataloaders(config, module_data, mode='test')
+    # else:
+    #     data_loader, valid_data_loader = init_dataloaders(config, module_data, mode='val')
 
 
     if args.rank == 0:
         print('Train dataset: ', [x.n_samples for x in data_loader], ' samples')
         print('Val dataset: ', [x.n_samples for x in valid_data_loader], ' samples')
-        if dataset_name in ['MSVD', 'DiDeMo', 'LSMDC'] and False:
-            print('Test dataset: ', [x.n_samples for x in test_data_loader], ' samples')
+        # if dataset_name in ['MSVD', 'DiDeMo', 'LSMDC'] and False:
+            # print('Test dataset: ', [x.n_samples for x in test_data_loader], ' samples')
 
     # build model architecture, then print to console
     model = config.initialize('arch', module_arch)
@@ -73,6 +76,19 @@ def run():
     metrics = [getattr(module_metric, met) for met in config['metrics']]
     # build optimizer, learning rate scheduler. delete every lines containing lr_scheduler for disabling scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
+
+    # for name, param in model.named_parameters(): #查看可优化的参数有哪些
+    #     if param.requires_grad:
+    #         print(name)
+    # exit(0)
+    # print('train', args)
+    if 'clip' in args.config:
+        trainable_params = [
+            {"params": model.clip_model.parameters(), "lr": 1e-7},
+            # {"params": model.text_model.parameters()},
+            # {"params": model.txt_proj.parameters()},
+            # {"params": model.vid_proj.parameters()},
+        ]
     optimizer = config.initialize('optimizer', transformers, trainable_params)
     lr_scheduler = None
     if 'lr_scheduler' in config._config:
@@ -126,11 +142,12 @@ def init_dataloaders(config, module_data, mode='val'):
 
 
 if __name__ == '__main__':
+    
     args = argparse.ArgumentParser(description='PyTorch Template')
     args.add_argument('-c', '--config', default=None, type=str,
                       help='config file path (default: None)')
     args.add_argument('-r', '--resume', default=None, type=str,
-                      help='path to latest checkpoint (default: None)')
+                      help='path to latest checkpoint (default: None)')     
     args.add_argument('-d', '--device', default=None, type=str,
                       help='indices of GPUs to enable (default: all)')
     args.add_argument('-o', '--observe', action='store_true',
@@ -151,6 +168,7 @@ if __name__ == '__main__':
     #         print("Let's use", torch.cuda.device_count(), "GPUs!")
 
     ###
+    
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
 
@@ -158,13 +176,13 @@ if __name__ == '__main__':
     args.add_argument('-mp', '--master_port', type=int, default=master_port)
     args.add_argument('-ws', '--world_size', type=int, default=world_size)
     args.add_argument('-rk', '--rank', type=int, default=rank)
-    args.add_argument('-lr1', '--learning_rate1', type=float, default=2e-4)
+    # args.add_argument('-lr1', '--learning_rate1', type=float, default=2e-4)
     # args.add_argument('-sc', '--schedule', default=[60, 80])
     args.add_argument('-sc', '--schedule', default=[60, 80], type=float, nargs="+",
                     metavar='LRSteps', help='epochs to decay learning rate by 10')
     args.add_argument('-de', '--debug', dest='debug', action='store_true')
     args.add_argument('-vs', '--vis_saving', dest='vis_saving', action='store_true')
-
+    args.add_argument('-ar', '--auto_resume', dest='auto_resume', action='store_true')
 
 
 
@@ -181,8 +199,14 @@ if __name__ == '__main__':
         CustomArgs(['--random_sampling'], type=bool, target=('arch', 'args', 'video_params', 'random_sampling')),
         CustomArgs(['--VQ_num_tokens'], type=int, target=('arch', 'args', 'video_params', 'VQ_num_tokens')),
         CustomArgs(['--AGG_region_num'], type=int, target=('arch', 'args', 'video_params', 'AGG_region_num')),
-        CustomArgs(['--Interaction_depth'], type=bool, target=('arch', 'args', 'video_params', 'Interaction_depth')),
+        CustomArgs(['--Interaction_depth'], type=int, target=('arch', 'args', 'video_params', 'Interaction_depth')),
         CustomArgs(['--temporal_type'], type=str, target=('arch', 'args', 'video_params', 'temporal_type')),
+        
+        # debug now
+        CustomArgs(['--Motion_Excitation'], type=bool, target=('arch', 'args', 'video_params', 'Motion_Excitation')),
+        # CustomArgs(['--RL_before_pos'], type=int, target=('arch', 'args', 'video_params', 'RL_before_pos')),
+        
+
 
 
         # for the first dataset

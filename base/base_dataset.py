@@ -82,11 +82,8 @@ class TextVideoDataset(Dataset):
     def __len__(self):
         return len(self.metadata)
 
-    def __getitem__(self, item):
-        item = item % len(self.metadata)
-        sample = self.metadata.iloc[item]
-        video_fp, rel_fp = self._get_video_path(sample)
-        caption = self._get_caption(sample)
+    def get_video(self, sample, video_fp):
+        
         #assert os.path.exists(video_fp)
         video_loading = self.video_params.get('loading', 'strict')
         frame_sample = 'rand'
@@ -126,10 +123,19 @@ class TextVideoDataset(Dataset):
         final = torch.zeros([self.video_params['num_frames'], 3, self.video_params['input_res'],
                              self.video_params['input_res']])
         final[:imgs.shape[0]] = imgs
+
+        return final
+
+    def __getitem__(self, item):
+        # TODO: following code is complicated, maybe can put some steps into funtions, e.g., video_read, meta_read, transform.
+        item = item % len(self.metadata)
+        sample = self.metadata.iloc[item]
+        video_fp, rel_fp = self._get_video_path(sample)
+        caption = self._get_caption(sample)
         
         meta_arr = {'raw_captions': caption, 'paths': rel_fp, 'dataset': self.dataset_name}
         # data = {'video': final, 'text': caption, 'meta': meta_arr, 'frame_idxs': idxs}
-        data = {'video': final, 'text': caption, 'meta': meta_arr}
+        data = {'video': self.get_video(sample, video_fp), 'text': caption, 'meta': meta_arr}
         # print('base_dataset:\t', data.keys())
         return data
 

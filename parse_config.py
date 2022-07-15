@@ -32,6 +32,8 @@ class ConfigParser:
             if args.config is not None:
                 config.update(read_json(Path(args.config)))
 
+
+
         # load config file and apply custom cli options
         self._config = _update_config(config, options, args)
 
@@ -45,13 +47,36 @@ class ConfigParser:
         # self._log_dir = save_dir / 'log' / exper_name / timestamp
 
         # modified by Mr. Yan. Associate log with model in the same folder
-        self._save_dir = save_dir / exper_name / timestamp
-        self._log_dir = save_dir / exper_name / timestamp 
+        if args.debug:
+            self._save_dir = save_dir / "debug"
+            self._log_dir = self._save_dir
+        else:
+            self._save_dir = save_dir / exper_name # / timestamp
+            self._log_dir = self._save_dir
 
+        if args.auto_resume:
+            resume_cfg_fname = self._save_dir / 'config.json'
+            if os.path.exists(self._save_dir):
+                self.resume = self._save_dir / 'model_latest.pth'
+                if not os.path.exists(self.resume):
+                    self.resume = None
+
+
+            # if os.path.exists(resume_cfg_fname):
+            #     print(resume_cfg_fname)
+            #     config = read_json(resume_cfg_fname)
+            #     # if args.config is not None:
+            #         # config.update(read_json(Path(args.config)))
+            #     self.resume = self._save_dir / 'model_latest.pth'
+            #     if not os.path.exists(self.resume):
+            #         self.resume = None
+            
 
         if not test:
             self.save_dir.mkdir(parents=True, exist_ok=True)
             self.log_dir.mkdir(parents=True, exist_ok=True)
+
+
 
         # if set, remove all previous experiments with the current config
         if vars(args).get("purge_exp_dir", False):

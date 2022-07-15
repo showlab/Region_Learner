@@ -1,0 +1,83 @@
+{
+    "name": "HMDB_3f",
+    "n_gpu": 4,
+    "arch": {
+        "type": "FrozenInTime",
+        "args": {
+            "video_params": {
+                "model": "SpaceTimeTransformer",
+                "arch_config": "base_patch16_224",
+                "num_frames": 3,
+                "pretrained": true,
+                "time_init": "zeros",
+                "random_sampling": false,
+                "temporal_type":"att"
+            },
+            "text_params": {
+                "model": "distilbert-base-uncased",
+                "pretrained": true,
+                "pretrained_path": "pretrained",
+                "input": "text"
+            },
+            "projection": "minimal",
+            "load_checkpoint" : ""
+        }
+    },
+    "data_loader": [
+        {
+            "type": "MultiDistTextVideoDataLoader",
+            "args":{
+                "dataset_name": "HMDB",
+                "data_dir": "data/HMDB51/",
+                "reader":"decord",
+                "shuffle": true,
+                "num_workers": 16,
+                "batch_size": 16,
+                "split": "train",
+                "cut": "1",
+                "subsample": 1,
+                "text_params": {
+                    "input": "text"
+                },
+                "video_params": {
+                    "extraction_fps": 25,
+                    "extraction_res": 256,
+                    "input_res": 224,
+                    "num_frames": 3,
+                    "stride": 1
+                }
+            }
+        }
+    ],
+    "optimizer": {
+        "type": "AdamW",
+        "args":{
+            "lr": 3e-5
+        }
+    },
+    "loss": {
+        "type": "NormSoftmaxLoss",
+        "args": {
+        }
+    },
+    "metrics": [
+        "cls_as_retrieval"
+     ],
+    "trainer": {
+        "epochs": 100,
+        "max_samples_per_epoch": 9000,
+        "save_dir": "./results/ft/HMDB/",
+        "save_period": 5,
+        "verbosity": 2,
+        "monitor": "min val_loss_0",
+        "early_stop": 10,
+        "neptune": false,
+        "use_amp":false
+    },
+    "visualizer": {
+        "type": "",
+        "args": {
+        }
+    }
+
+}

@@ -1,16 +1,11 @@
 import numpy as np
 import torch
 from torch import nn
-from torchvision.utils import make_grid
 from base.base_trainer import Multi_BaseTrainer_dist, BaseTrainer
 from utils import inf_loop
 from model.model import sim_matrix
-from itertools import cycle
-import sys
 import torch.distributed as dist
-import torch.nn.functional as F
-from einops import rearrange, repeat
-from torch import nn, einsum
+from torch import nn
 import time
 
 class AllGather(torch.autograd.Function):
@@ -102,13 +97,22 @@ class Multi_Trainer_dist(Multi_BaseTrainer_dist):
         # org version use a fixed lr in FiT, but now we reduce lr by schedule. 
         # But the init learning_rate should be configed by json rather than fixed. Thus we use "lr = args.learning_rate"
         # TODO
-        lr = args.learning_rate1
+        # lr = args.learning_rate1
+        # print('trainer', args)
         # lr = args.learning_rate
-        for milestone in args.schedule:
-            lr *= 0.1 if epoch >= milestone else 1.
-        for param_group in optimizer.param_groups:
+        # for milestone in args.schedule:
+        #     lr *= 0.1 if epoch >= milestone else 1.
+        for i, param_group in enumerate(optimizer.param_groups):
+            # print(param_group['lr'])
+            lr = param_group['lr']
+            for milestone in args.schedule:
+                lr *= 0.1 if epoch >= milestone else 1.
             param_group['lr'] = lr
-        print('current learning rate is:\t', lr)
+            # print(type(param_group['params']))
+            # print(type(param_group['params'][0]))
+            # print(type(param_group['params'][0]))
+            if args.local_rank == 0:
+                print('current learning rate is:\t', param_group['lr'])
 
     def _train_epoch(self, epoch, scaler):
         """
@@ -134,6 +138,8 @@ class Multi_Trainer_dist(Multi_BaseTrainer_dist):
         
         # added by Mr Yan
         since = time.time()
+        # BUG fixed, should put lr adjust before the first epoch
+        self._adjust_learning_rate(self.optimizer, epoch, self.args)
         
         for batch_idx, data_li in enumerate(zip(*self.data_loader)):
             # Dist mode puts a batch_size of samples on each gpu, rather than spliting a batch_size of data onto all gpus.
@@ -147,19 +153,27 @@ class Multi_Trainer_dist(Multi_BaseTrainer_dist):
                 if self.tokenizer is not None:
                     data['text'] = self.tokenizer(data['text'], return_tensors='pt', padding=True,
                                                 truncation=True)
-                data['text'] = {key: val.to(self.device) for key, val in data['text'].items()}
+                    data['text'] = {key: val.to(self.device) for key, val in data['text'].items()}
                 data['video'] = data['video'].to(self.device)
 
-                self.optimizer.zero_grad()
+                # self.optimizer.zero_grad() # removed by Mr. YAN
                 # Runs the forward pass under autocast.
                 with torch.cuda.amp.autocast(enabled=self.use_amp): # Automatic Mixed Precision added by Mr. Yan
                     with torch.set_grad_enabled(True):
-                        text_embeds, video_embeds = self.model(data, epoch)
-                        video_embeds = self.allgather(video_embeds, self.n_gpu, self.args)
-                        text_embeds = self.allgather(text_embeds, self.n_gpu, self.args)
-                        # loss = retrival_head(text_embeds, video_embeds)
-                        output = sim_matrix(text_embeds, video_embeds)
-                        loss = self.loss(output)
+                        if 'QA' in self.data_loader[dl_idx].dataset_name:
+                            # target = torch.LongTensor(data['answer_id']).to(self.device)
+                            
+                            target = data['answer_id'].to(self.device)
+                            # treat QA as a classification problem
+                            output = self.model(data, epoch)
+                            loss = self.loss(output, target)
+                        else:
+                            text_embeds, video_embeds = self.model(data, epoch)
+                            video_embeds = self.allgather(video_embeds, self.n_gpu, self.args)
+                            text_embeds = self.allgather(text_embeds, self.n_gpu, self.args)
+                            # loss = retrival_head(text_embeds, video_embeds)
+                            output = sim_matrix(text_embeds, video_embeds)
+                            loss = self.loss(output)
 
                         # normalize loss to account for batch accumulation
                         loss = loss / self.accum_iter
@@ -221,7 +235,7 @@ class Multi_Trainer_dist(Multi_BaseTrainer_dist):
             if self.args.rank == 0:
                 log.update(val_log)
 
-        self._adjust_learning_rate(self.optimizer, epoch, self.args)
+        # self._adjust_learning_rate(self.optimizer, epoch, self.args) # BUG fixed
 
         # if self.lr_scheduler is not None:
         #     self.lr_scheduler.step()
@@ -253,45 +267,115 @@ class Multi_Trainer_dist(Multi_BaseTrainer_dist):
         text_embed_arr = {x: [] for x in range(len(self.valid_data_loader))}
         vid_embed_arr = {x: [] for x in range(len(self.valid_data_loader))}
 
+        # for zero-shot action recognition.
+        # Added by Mr. YAN
+        
+        alltext_list = []
+        answer_list = []
+        answer_all_arr = {x: [] for x in range(len(self.valid_data_loader))} # for MC
+        logits_all_arr = {x: [] for x in range(len(self.valid_data_loader))} # for QA
+        target_all_arr = {x: [] for x in range(len(self.valid_data_loader))} # for QA
+        
+        res_dict = {}
+
         with torch.no_grad():
             # for validation we switch the nested loop order, because alternate batches not needed...
             # ... and dataloaders can be of different length
             for dl_idx, dl in enumerate(self.valid_data_loader):
                 for batch_idx, data in enumerate(dl):
+                    #
+
+                    # if 'QA' in self.valid_data_loader[dl_idx].dataset_name:
+                    #     answer = torch.LongTensor(data['answer_id']).cuda()
+                    #     answer_all = [torch.zeros_like(answer) for _ in range(self.n_gpu)]
+                    #     torch.distributed.all_gather(answer_all, answer)
+                    #     answer_all = torch.cat(answer_all, dim=0)
+                    #     # print('len', len(answer_all))
+                    #     answer_all_arr[dl_idx].append(answer_all.cpu())
+                    #     # print(data['text'][:5])
+
+                    if self.valid_data_loader[dl_idx].dataset_name in ['HMDB', 'UCF']:
+                        # label_set.update(data['text'])
+                        alltext_list.extend(data['text'])
+
+                    if self.valid_data_loader[dl_idx].dataset_name in ['MSRVTT_MC', 'LSMDC_MC']:
+                        # caption is a dict containing five options
+                        new_data = []
+                        opt_size = len(data['text'])
+                        batch_size = len(data['text'][0])
+                        for b in range(batch_size):
+                            for i in range(opt_size):
+                                new_data.append(data['text'][i][b])
+                        data['text'] = new_data
+                        # answer_list.extend(data['answer'])
+
+                        answer = torch.LongTensor(data['answer']).cuda()
+                        answer_all = [torch.zeros_like(answer) for _ in range(self.n_gpu)]
+                        torch.distributed.all_gather(answer_all, answer)
+                        answer_all = torch.cat(answer_all, dim=0)
+                        # print('len', len(answer_all))
+                        answer_all_arr[dl_idx].append(answer_all.cpu())
+                        # print(data['text'][:5])
+
+
+
                     meta_arr[dl_idx].append(data['meta'])
                     if self.tokenizer is not None:
                         data['text'] = self.tokenizer(data['text'], return_tensors='pt', padding=True, truncation=True)
-                    data['text'] = {key: val.to(self.device) for key, val in data['text'].items()}
+                        data['text'] = {key: val.to(self.device) for key, val in data['text'].items()}
                     data['video'] = data['video'].to(self.device)
                     
                     # Runs the forward pass under autocast.
                     with torch.cuda.amp.autocast(enabled=self.use_amp): # Automatic Mixed Precision added by Mr. Yan
-                        text_embed, vid_embed = self.model(data, return_embeds=True)
+                        if 'QA' in self.valid_data_loader[dl_idx].dataset_name:
+                            target = torch.LongTensor(data['answer_id']).cuda()
 
-                        #if isinstance(self.model, nn.DataParallel) and data["video"].shape[0] < len(self.model.device_ids):
-                            # Note that if some batch has size smaller than the GPU size, `DataParallel` will fail.
-                            # It can happen with the last batch of the dataset, depending on its size.
-                            # This avoids using `DataParallel` in this case, and supposes the entire batch fits in one GPU.
-                        #    text_embed, vid_embed = self.model.module(data, return_embeds=True)
-                        #else:
-                        #    text_embed, vid_embed = self.model(data, return_embeds=True)
-                        vid_embed_all = [torch.zeros_like(vid_embed) for _ in range(self.n_gpu)]
-                        torch.distributed.all_gather(vid_embed_all, vid_embed)
-                        vid_embed_all = torch.cat(vid_embed_all, dim=0)
+                            # target = data['answer_id'].cuda()
+                            target_all = [torch.zeros_like(target) for _ in range(self.n_gpu)]
+                            torch.distributed.all_gather(target_all, target)
+                            target_all = torch.cat(target_all, dim=0)
+                            target_all_arr[dl_idx].append(target_all.cpu())
 
-                        text_embed_all = [torch.zeros_like(text_embed) for _ in range(self.n_gpu)]
-                        torch.distributed.all_gather(text_embed_all, text_embed)
-                        text_embed_all = torch.cat(text_embed_all, dim=0)
 
-                        text_embed_arr[dl_idx].append(text_embed_all.cpu())
-                        vid_embed_arr[dl_idx].append(vid_embed_all.cpu())
-                        sims_batch = sim_matrix(text_embed_all, vid_embed_all)
-                        loss = self.loss(sims_batch)
+                            logits = self.model(data)
+                            loss = self.loss(logits, target)
+
+                            logits_all = [torch.zeros_like(logits) for _ in range(self.n_gpu)]
+                            torch.distributed.all_gather(logits_all, logits)
+                            logits_all = torch.cat(logits_all, dim=0)
+                            logits_all_arr[dl_idx].append(logits_all.cpu())
+
+                        else:
+                            text_embed, vid_embed = self.model(data, return_embeds=True)
+                            #if isinstance(self.model, nn.DataParallel) and data["video"].shape[0] < len(self.model.device_ids):
+                                # Note that if some batch has size smaller than the GPU size, `DataParallel` will fail.
+                                # It can happen with the last batch of the dataset, depending on its size.
+                                # This avoids using `DataParallel` in this case, and supposes the entire batch fits in one GPU.
+                            #    text_embed, vid_embed = self.model.module(data, return_embeds=True)
+                            #else:
+                            #    text_embed, vid_embed = self.model(data, return_embeds=True)
+                            vid_embed_all = [torch.zeros_like(vid_embed) for _ in range(self.n_gpu)]
+                            torch.distributed.all_gather(vid_embed_all, vid_embed)
+                            vid_embed_all = torch.cat(vid_embed_all, dim=0)
+
+                            text_embed_all = [torch.zeros_like(text_embed) for _ in range(self.n_gpu)]
+                            torch.distributed.all_gather(text_embed_all, text_embed)
+                            text_embed_all = torch.cat(text_embed_all, dim=0)
+
+
+                            text_embed_arr[dl_idx].append(text_embed_all.cpu())
+                            vid_embed_arr[dl_idx].append(vid_embed_all.cpu())
+                            sims_batch = sim_matrix(text_embed_all, vid_embed_all)
+                            loss = self.loss(sims_batch)
+
+
                         total_val_loss[dl_idx] += loss.item()
                     
                     # added by Mr. Yan for debuging
                     if self.args.debug:
                         break
+                
+                
    
         for dl_idx in range(len(self.valid_data_loader)):
             # TODO: this needs a clean
@@ -300,12 +384,76 @@ class Multi_Trainer_dist(Multi_BaseTrainer_dist):
                                        total_val_loss[dl_idx] / len(self.valid_data_loader[dl_idx]))
             nested_metrics = {x: {} for x in range(len(self.valid_data_loader))}
 
+
+            # for MSRVTT/MSVD QA
+            if 'QA' in self.valid_data_loader[dl_idx].dataset_name:
+                logits_all = torch.cat(logits_all_arr[dl_idx])
+                # ac = (out==ans).float().mean().item()
+                gt = torch.cat(target_all_arr[dl_idx])
+                # print('MSRVTT_QA: ', logits_all.shape, gt.shape)
+                for metric in self.metrics:
+                    res = metric(logits_all, gt)
+                    if self.args.rank == 0:
+                        print("Question Answer:", res)
+                        res_dict['Question Answer'] = res
+                break
+
+                            
             text_embeds = torch.cat(text_embed_arr[dl_idx])
             vid_embeds = torch.cat(vid_embed_arr[dl_idx])
-            sims = sim_matrix(text_embeds, vid_embeds).detach().cpu().numpy()
 
+            # for zero-shot action recognition, we need fix the text_embeds within limited action labels.
+            # added by Mr. Yan
+            if self.valid_data_loader[dl_idx].dataset_name in ['HMDB', 'UCF']:
+                class_id = []
+                label_list = list(set(alltext_list))
+                print('Number of Action Classes:', len(label_list))
+                if self.tokenizer is not None:
+                    label_tokens = self.tokenizer(label_list, return_tensors='pt', padding=True, truncation=True)
+                    label_tokens = {key: val.to(self.device) for key, val in label_tokens.items()}
+                text_embeds = self.model.module.compute_text((label_tokens)).cpu()
+                # print('text_embeds size:', text_embeds.size())
+                sims = sim_matrix(text_embeds, vid_embeds).detach().cpu().numpy()
+
+                for item in alltext_list:
+                    class_id.append(label_list.index(item))
+                for metric in self.metrics:
+                    res = metric(sims, class_id)
+                    if self.args.rank == 0:
+                        print("Zero-Shot Action Recognition:", res)
+                        res_dict['Zero-Shot Action Recognition'] = res
+                break
+
+            # for MSRVTT/LSMDC MC
+            if 'MC' in self.valid_data_loader[dl_idx].dataset_name:
+                answer_all = torch.cat(answer_all_arr[dl_idx])
+                B = text_embeds.size(0)
+                text_embeds = text_embeds.reshape(B//5, 5, -1)
+                # print('embeds:', text_embeds.size(), vid_embeds.size())
+                all_sims = []
+                for b in range(text_embeds.size(0)):
+                    sims = sim_matrix(vid_embeds[b].unsqueeze(0), text_embeds[b])
+                    # print('sims:', sims.size())
+                    all_sims.append(sims)
+
+
+                for metric in self.metrics:
+                    # print('answer_all', len(answer_all))
+                    res = metric(torch.stack(all_sims).squeeze(), answer_all)
+                    if self.args.rank == 0:
+                        print("Multiple Choice:", res)
+                        res_dict['Multiple Choice'] = res
+                break
+
+
+
+            # print("text_embeds shape:", text_embeds.shape)
+            # print("vid_embeds shape:", vid_embeds.shape)
+
+            sims = sim_matrix(text_embeds, vid_embeds).detach().cpu().numpy()
             for metric in self.metrics:
                 metric_name = metric.__name__
+                # print('sims shape:', sims[:10, :10])
                 res = metric(sims)
                 if self.args.rank == 0:
                     verbose(epoch=epoch, metrics=res, name=self.valid_data_loader[dl_idx].dataset_name,
@@ -325,11 +473,12 @@ class Multi_Trainer_dist(Multi_BaseTrainer_dist):
                             meta_arr_cat[key] += val
                     self.visualizer.visualize_ranking(sims, epoch, meta_arr_cat, nested_metrics)
 
-        res_dict = {}
+        
         if self.args.rank == 0:
-            res_dict = {f'val_loss_{dl_idx}': total_val_loss[dl_idx] / len(self.valid_data_loader[dl_idx])
-                        for dl_idx in range(len(self.valid_data_loader))}
+            for dl_idx in range(len(self.valid_data_loader)):
+                res_dict[f'val_loss_{dl_idx}'] = total_val_loss[dl_idx] / len(self.valid_data_loader[dl_idx])
             res_dict['nested_val_metrics'] = nested_metrics
+
 
         return res_dict
 
@@ -413,7 +562,7 @@ class Trainer(BaseTrainer):
                 if self.tokenizer is not None:
                     data['text'] = self.tokenizer(data['text'], return_tensors='pt', padding=True,
                                                   truncation=True)
-                data['text'] = {key: val.to(self.device) for key, val in data['text'].items()}
+                    data['text'] = {key: val.to(self.device) for key, val in data['text'].items()}
                 data['video'] = data['video'].to(self.device)
 
                 self.optimizer.zero_grad()
@@ -481,7 +630,7 @@ class Trainer(BaseTrainer):
                     meta_arr[dl_idx].append(data['meta'])
                     if self.tokenizer is not None:
                         data['text'] = self.tokenizer(data['text'], return_tensors='pt', padding=True, truncation=True)
-                    data['text'] = {key: val.to(self.device) for key, val in data['text'].items()}
+                        data['text'] = {key: val.to(self.device) for key, val in data['text'].items()}
                     data['video'] = data['video'].to(self.device)
 
                     if isinstance(self.model, nn.DataParallel) and data["video"].shape[0] < len(self.model.device_ids):

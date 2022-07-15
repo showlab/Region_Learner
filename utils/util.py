@@ -12,6 +12,18 @@ import msgpack
 import humanize
 import os
 
+
+def load_json(filename):
+    with open(filename, 'r') as f:
+        return json.load(f)
+
+def load_jsonl(filename):
+    with open(filename, 'r') as f:
+        return [json.loads(l.strip("\n")) for l in f.readlines()]
+
+def list_flatten(t):
+    return [item for sublist in t for item in sublist]
+
 def replace_nested_dict_item(obj, key, replace_value):
     for k, v in obj.items():
         if isinstance(v, dict):
